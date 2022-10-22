@@ -4,36 +4,39 @@ import ReactMarkdown from "react-markdown";
 import Layout from "../../components/layout";
 import { PostProps } from "../../components/post";
 import prisma from "../../lib/prisma";
+import Router from "next/router";
+import { useSession } from "next-auth/react";
 
 export const getServerSideProps: GetServerSideProps = async ({ params }) => {
-  // const post = {
-  //   id: "1",
-  //   title: "Prisma is the perfect ORM for Next.js",
-  //   content: "[Prisma](https://github.com/prisma/prisma) and Next.js go _great_ together!",
-  //   published: false,
-  //   author: {
-  //     name: "Socheath Horl",
-  //     email: "horl.socheath@gmail.com",
-  //   },
-  // };
-
   const post = await prisma.post.findUnique({
     where: {
       id: String(params?.id),
     },
     include: {
       author: {
-        select: { name: true },
+        select: { name: true, email: true },
       },
     },
   });
-
   return {
-    props: post
+    props: post,
   };
 };
 
+async function publishPost(id:string): Promise<void> {
+  await fetch(`/api/publish/${id}`, {
+    method: 'PUT',
+  });
+  await Router.push('/')
+}
+
 const Post: React.FC<PostProps> = (props) => {
+  const { data: session, status } = useSession();
+  if (status === 'loading') {
+    return <div>Authenticating ...</div>
+  }
+  const userHasValidSession = Boolean(session);
+  const postBelongToUser = session?.user?.email === props.author?.email;
   let title = props.title;
   if (!props.published) {
     title = `${title} (Draft)`
@@ -45,6 +48,9 @@ const Post: React.FC<PostProps> = (props) => {
         <h2>{title}</h2>
         <p>By {props?.author?.name || "Unknown author"}</p>
         <ReactMarkdown children={props.content} />
+        {!props.published && userHasValidSession && postBelongToUser && (
+          <button onClick={() => publishPost(props.id)}>Publish</button>
+        )}
       </div>
       <style jsx>{`
         .page {
